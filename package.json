@@ -1,0 +1,20 @@
+{
+  "name": "1c-chat-api",
+  "version": "1.0.0",
+  "description": "Локальный сервис счетов через 1С Fresh OData",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "check": "node scripts/check.js",
+    "test": "node --test"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "axios": "^1.20.0",
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1"
+  }
+}

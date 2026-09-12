@@ -1,0 +1,9 @@
+{
+  "clientName": "Торговые решения",
+  "contractRef": "c2f2a205-c0d4-4d82-afee-9edf26509515",
+  "productRef": "f0d18455-90cc-11ed-80f8-00155d011306",
+  "quantity": 1,
+  "price": 12200,
+  "vatRate": 22,
+  "priceIncludesVat": true
+}
