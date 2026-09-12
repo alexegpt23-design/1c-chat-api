@@ -3,6 +3,7 @@ const assert = require("node:assert/strict");
 process.env.ONEC_URL = "http://onec.invalid/odata/standard.odata/";
 process.env.ONEC_USER = "test-user";
 process.env.ONEC_PASSWORD = "test-password";
+process.env.API_KEY = "test-api-key";
 const { AppError } = require("../errors");
 const { createConfirmationService, TTL_MS } = require("../invoice-confirmation-service");
 

@@ -1,0 +1,100 @@
+{
+  "openapi": "3.1.0",
+  "info": { "title": "Помощник выставления счетов 1С Fresh", "version": "1.1.0", "description": "Сначала покажи предпросмотр, затем получи явное подтверждение пользователя и вызови confirmInvoice. При неоднозначности попроси выбрать вариант. Не повторяй создание после ошибки." },
+  "servers": [{ "url": "https://api.scheta.online" }],
+  "security": [{ "ApiKey": [] }],
+  "paths": {
+    "/invoice-preview-text": {
+      "post": {
+        "operationId": "previewInvoiceText",
+        "summary": "Разобрать текст, найти данные 1С и показать счёт без создания",
+        "description": "Количество по умолчанию 1, цена включает НДС. HTTP 409 содержит details.field и details.candidates: попроси выбрать вариант, повтори тот же текст с соответствующим clientRef/productRef/contractRef. ID действует 10 минут. Покажи клиент, товар, договор, количество, цену, НДС, итог и запроси подтверждение.",
+        "x-openai-isConsequential": false,
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "$ref": "#/components/schemas/TextRequest" } } } },
+        "responses": {
+          "200": { "description": "Предпросмотр; документ не создан", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Preview" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "422": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" },
+          "504": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/invoice-confirm": {
+      "post": {
+        "operationId": "confirmInvoice",
+        "summary": "После явного подтверждения создать и провести показанный счёт",
+        "description": "Вызывай только после согласия пользователя на показанный предпросмотр. Не изменяй confirmationId и не создавай новый предпросмотр автоматически после ошибок записи. Повтор того же ID возвращает прежний результат без дубля в течение срока действия. Верни номер, проведение и кликабельную pdfUrl; ссылка на PDF действует 15 минут.",
+        "x-openai-isConsequential": true,
+        "requestBody": { "required": true, "content": { "application/json": { "schema": { "type": "object", "additionalProperties": false, "required": ["confirmationId"], "properties": { "confirmationId": { "type": "string", "format": "uuid" } } } } } },
+        "responses": {
+          "201": { "description": "Счёт создан, проведён и прочитан из 1С", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Confirmed" } } } },
+          "200": { "description": "Повторное подтверждение: ранее созданный счёт", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Confirmed" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "410": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" },
+          "504": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    },
+    "/invoice/{id}/pdf": {
+      "get": {
+        "operationId": "downloadInvoicePdf",
+        "summary": "Скачать PDF проведённого счёта",
+        "description": "ChatGPT может вызвать с API-ключом. Пользователю передай подписанную pdfUrl из confirmInvoice без изменений, чтобы открыть PDF браузером.",
+        "x-openai-isConsequential": false,
+        "parameters": [{ "name": "id", "in": "path", "required": true, "schema": { "type": "string", "format": "uuid" } }],
+        "responses": {
+          "200": { "description": "PDF с кириллицей и реквизитами из 1С", "content": { "application/pdf": { "schema": { "type": "string", "format": "binary" } } } },
+          "400": { "$ref": "#/components/responses/Error" },
+          "401": { "$ref": "#/components/responses/Error" },
+          "404": { "$ref": "#/components/responses/Error" },
+          "409": { "$ref": "#/components/responses/Error" },
+          "502": { "$ref": "#/components/responses/Error" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": { "ApiKey": { "type": "apiKey", "in": "header", "name": "X-API-Key" } },
+    "responses": {
+      "Error": { "description": "Ошибка валидации, доступа, поиска или 1С. При details.retrySafe=false проверь существующий документ перед новой попыткой.", "content": { "application/json": { "schema": { "$ref": "#/components/schemas/Error" } } } }
+    },
+    "schemas": {
+      "TextRequest": { "type": "object", "additionalProperties": false, "required": ["text"], "properties": {
+        "text": { "type": "string", "minLength": 1, "maxLength": 2000, "example": "Выставь счёт ООО ГИПЕР. Фискальный накопитель на 15 месяцев. 12200 рублей. НДС 22" },
+        "clientRef": { "type": "string", "format": "uuid" },
+        "productRef": { "type": "string", "format": "uuid" },
+        "contractRef": { "type": "string", "format": "uuid" }
+      } },
+      "Preview": { "type": "object", "required": ["status", "created", "client", "product", "contract", "quantity", "price", "vat", "total", "confirmationId", "expiresAt"], "properties": {
+        "status": { "type": "string", "enum": ["preview"] }, "created": { "type": "boolean", "enum": [false] },
+        "client": { "type": "string" }, "product": { "type": "string" }, "contract": { "type": "string" },
+        "clientRef": { "type": "string", "format": "uuid" }, "productRef": { "type": "string", "format": "uuid" }, "contractRef": { "type": "string", "format": "uuid" },
+        "organizationRef": { "type": "string", "format": "uuid" }, "currencyRef": { "type": "string", "format": "uuid" },
+        "date": { "type": "string" }, "quantity": { "type": "number" }, "price": { "type": "number" },
+        "vat": { "oneOf": [{ "type": "number" }, { "type": "string", "enum": ["БезНДС"] }] },
+        "priceIncludesVat": { "type": "boolean" }, "vatAmount": { "type": "number" }, "subtotal": { "type": "number" }, "total": { "type": "number" },
+        "confirmationId": { "type": "string", "format": "uuid" }, "expiresAt": { "type": "string", "format": "date-time" }
+      } },
+      "Confirmed": { "type": "object", "required": ["number", "posted", "ref", "pdfUrl"], "properties": {
+        "number": { "type": "string" }, "posted": { "type": "boolean", "enum": [true] }, "ref": { "type": "string", "format": "uuid" }, "pdfUrl": { "type": "string", "format": "uri" },
+        "Number": { "type": "string" }, "Date": { "type": "string" }, "Сумма": { "type": "number" }, "Posted": { "type": "boolean" }, "Ref_Key": { "type": "string", "format": "uuid" }
+      } },
+      "Candidate": { "type": "object", "properties": { "ref": { "type": "string", "format": "uuid" }, "name": { "type": "string" }, "inn": { "type": "string" }, "number": { "type": "string" } } },
+      "Error": { "type": "object", "required": ["error"], "properties": {
+        "error": { "type": "string" }, "requestId": { "type": "string" }, "details": { "type": "object", "properties": {
+          "field": { "type": "string" }, "missing": { "type": "array", "items": { "type": "string" } },
+          "candidates": { "type": "array", "items": { "$ref": "#/components/schemas/Candidate" } },
+          "retrySafe": { "type": "boolean" }, "stage": { "type": "string" }, "Ref_Key": { "type": "string" }, "hint": { "type": "string" }
+        } }
+      } }
+    }
+  }
+}

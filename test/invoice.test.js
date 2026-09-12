@@ -7,6 +7,8 @@ process.env.ONEC_TEST_STATE_FILE = path.join(require("node:os").tmpdir(), `onec-
 process.env.ONEC_URL = "http://onec.invalid/odata/standard.odata/";
 process.env.ONEC_USER = "test-user";
 process.env.ONEC_PASSWORD = "test-password";
+process.env.API_KEY = "test-api-key";
+process.env.PUBLIC_BASE_URL = "https://api.example.test";
 delete process.env.ONEC_VAT_RATE;
 const { oneC } = require("../onec-client");
 const app = require("../server");
@@ -49,11 +51,11 @@ beforeEach(() => {
     };
 });
 async function post(path, data) {
-    const response = await fetch(baseURL + path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const response = await fetch(baseURL + path, { method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": process.env.API_KEY }, body: JSON.stringify(data) });
     return { status: response.status, data: await response.json() };
 }
 test("/ping сохраняет успешный формат ответа", async () => {
-    assert.deepEqual(await (await fetch(baseURL + "/ping")).json(), { ok: true, message: "1С доступна" });
+    assert.deepEqual(await (await fetch(baseURL + "/ping", { headers: { "X-API-Key": process.env.API_KEY } })).json(), { ok: true, message: "1С доступна" });
 });
 test("поиск экранирует апострофы и кодирует пробелы как %20", async () => {
     const result = await post("/find-client", { name: "O'Брайен & Ко" });
@@ -121,7 +123,7 @@ test("валидация отклоняет ошибочный JSON, отриц�
     for (const change of [{ quantity: -1 }, { price: "" }, { Number: "123" }, { priceIncludesVat: "false" }, { date: "2026-02-30T00:00:00" }]) {
         assert.equal((await post("/create-invoice", { ...input, ...change })).status, 400);
     }
-    const response = await fetch(baseURL + "/find-client", { method: "POST", headers: { "Content-Type": "application/json" }, body: "{" });
+    const response = await fetch(baseURL + "/find-client", { method: "POST", headers: { "Content-Type": "application/json", "X-API-Key": process.env.API_KEY }, body: "{" });
     assert.equal(response.status, 400);
     assert.equal(calls.length, 0);
 });
@@ -308,4 +310,42 @@ test("гибкий текст возвращает HTTP 400 с указание�
     assert.match(result.data.error, /цена/);
     assert.deepEqual(result.data.details.missing, ["price"]);
     assert.equal(calls.length, 0);
+});
+
+test("новый сценарий из текста: компактный preview, подтверждение и ссылка на PDF", async () => {
+    const preview = await post("/invoice-preview-text", { text: "Выставь счёт ООО ГИПЕР. Фискальный накопитель на 15 месяцев. 12.200 руб. с НДС 22" });
+    assert.equal(preview.status, 200);
+    assert.equal(preview.data.status, "preview");
+    assert.equal(preview.data.client, client.Description);
+    assert.equal(preview.data.product, product.Description);
+    assert.equal(preview.data.price, 12200);
+    assert.equal(preview.data.quantity, 1);
+    assert.equal(preview.data.vat, 22);
+    assert.equal(preview.data.total, 12200);
+    assert.ok(calls.every(call => call.method === "get"));
+    const result = await post("/invoice-confirm", { confirmationId: preview.data.confirmationId });
+    assert.equal(result.status, 201);
+    assert.equal(result.data.number, "AUTO-000001");
+    assert.equal(result.data.posted, true);
+    assert.equal(result.data.ref, ref(6));
+    const url = new URL(result.data.pdfUrl);
+    assert.equal(url.origin, "https://api.example.test");
+    assert.equal(url.pathname, `/invoice/${ref(6)}/pdf`);
+    assert.ok(url.searchParams.get("token"));
+    assert.equal(calls.filter(call => call.method === "post").length, 2);
+});
+
+test("новый preview не выдаёт подтверждение при нехватке цены и неоднозначном поиске", async () => {
+    const missing = await post("/invoice-preview-text", { text: "ООО ГИПЕР. ФН 15 месяцев. НДС 22" });
+    assert.equal(missing.status, 400);
+    assert.equal(missing.data.error, "Не указана цена");
+    assert.equal(calls.length, 0);
+    for (const value of ["ambiguous", "productAmbiguous", "contractAmbiguous"]) {
+        mode = value;
+        const result = await post("/invoice-preview-text", { text: invoiceText });
+        assert.equal(result.status, 409);
+        assert.equal(result.data.confirmationId, undefined);
+        assert.equal(result.data.details.candidates.length, 2);
+    }
+    assert.ok(calls.every(call => call.method === "get"));
 });

@@ -2,6 +2,7 @@ const { randomUUID } = require("node:crypto");
 const { AppError } = require("./errors");
 const invoiceService = require("./invoice-service");
 const { resolveTextRequest } = require("./invoice-text-service");
+const { pdfUrl } = require("./invoice-pdf-service");
 
 const TTL_MS = 10 * 60 * 1000;
 
@@ -27,7 +28,7 @@ function createConfirmationService({
         // Изолируем снимок от входного объекта, возвращаемого preview и изменений настроек.
         confirmations.set(confirmationId, { payload: structuredClone(payload), expiresAt, status: "pending" });
         console.log(`[Подтверждение] Предпросмотр готов; действует до ${new Date(expiresAt).toISOString()}`);
-        return { ...structuredClone(preview), confirmationId, expiresAt: new Date(expiresAt).toISOString() };
+        return { ...structuredClone(preview), status: "preview", confirmationId, expiresAt: new Date(expiresAt).toISOString() };
     }
 
     async function confirm(body) {
@@ -53,7 +54,8 @@ function createConfirmationService({
         console.log("[Подтверждение] Получено подтверждение; создаём сохранённый счёт");
         try {
             const created = await create(structuredClone(entry.payload));
-            entry.result = { Number: created.number, Date: created.date, Сумма: created.amount, Posted: created.posted, Ref_Key: created.Ref_Key };
+            entry.result = { Number: created.number, Date: created.date, Сумма: created.amount, Posted: created.posted, Ref_Key: created.Ref_Key,
+                number: created.number, posted: created.posted, ref: created.Ref_Key, pdfUrl: pdfUrl(created.Ref_Key) };
             entry.status = "completed";
             delete entry.payload;
             return { result: structuredClone(entry.result), reused: false };

@@ -2,6 +2,7 @@ const { AppError } = require("./errors");
 const invoiceService = require("./invoice-service");
 const catalog = require("./catalog-service");
 const { guid } = catalog;
+const { redact } = require("./onec-client");
 
 const EXAMPLE = "Выставь счёт ООО Торговые решения. Фискальный накопитель на 15 месяцев. Цена 12200. НДС 22";
 function parseInvoiceText(text) {
@@ -16,18 +17,18 @@ function parseInvoiceText(text) {
         seen.add(field);
         parsed[field] = value;
     };
-    const number = "(?:\\d{1,3}(?: \\d{3})+|\\d+)(?:[.,]\\d+)?";
+    const number = "(?:\\d{1,3}(?:[ .]\\d{3})+|\\d+)(?:[.,]\\d{1,2})?";
     const currency = "(?:руб(?:лей|ля|ль)?|р|₽)(?!\\p{L})";
     const boundary = "(?<![\\p{L}\\p{N}.,+\\-])";
-    const decimal = value => value.replace(/ /g, "").replace(",", ".");
+    const decimal = value => value.replace(/ /g, "").replace(/\.(?=\d{3}(?:\D|$))/g, "").replace(",", ".");
     let rest = text.normalize("NFKC");
     // Сначала извлекаем явно обозначенные суммы/ставки независимо от пунктуации.
-    rest = rest.replace(new RegExp(`${boundary}(?:без\\s*ндс|(?:ндс|ставка(?:\\s+ндс)?)\\s*[:=]?\\s*\\d+\\s*%?|\\d+\\s*%)(?![\\p{L}\\p{N}]|[.,]\\d)(?:\\s+(?:сверху|в цене|включ[её]н))?`, "giu"), value => {
+    rest = rest.replace(new RegExp(`${boundary}(?:без\\s*ндс|(?:с\\s+ндс|ндс|ставка(?:\\s+ндс)?)\\s*[:=]?\\s*\\d+\\s*%?|\\d+\\s*%)(?![\\p{L}\\p{N}]|[.,]\\d)(?:\\s+(?:сверху|в цене|включ[её]н))?`, "giu"), value => {
         assign("vatRate", /^без/iu.test(value) ? "БезНДС" : Number(value.match(/\d+/u)[0]));
         parsed.priceIncludesVat = !/сверху$/iu.test(value);
         return ";";
     });
-    rest = rest.replace(new RegExp(`${boundary}(?:(?:цена|за)\\s*[:=]?\\s*${number}(?:\\s*${currency})?|${number}\\s*${currency})(?![\\p{L}\\p{N}])`, "giu"), value => {
+    rest = rest.replace(new RegExp(`${boundary}(?:(?:цена|за)\\s*[:=]?\\s*${number}(?:\\s*${currency})?|${number}\\s*${currency})(?![\\p{L}\\p{N}]|[.,]\\d)`, "giu"), value => {
         assign("price", decimal(value.match(new RegExp(number, "u"))[0]));
         return ";";
     });
@@ -37,7 +38,7 @@ function parseInvoiceText(text) {
         let match;
         if (new RegExp(`^${number}$`, "u").test(clause)) {
             assign("price", decimal(clause));
-        } else if ((match = clause.match(/^(?:количество|кол-во)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(?:шт(?:ук[аи]?)?)?$/iu))) {
+        } else if ((match = clause.match(/^(?:количество|кол-во)\s*[:=]?\s*(\d+(?:[.,]\d+)?)\s*(?:шт(?:ук[аи]?)?)?$/iu)) || (match = clause.match(/^(\d+(?:[.,]\d+)?)\s*шт(?:ук[аи]?)?$/iu))) {
             assign("quantity", match[1].replace(",", "."));
         } else if ((match = clause.match(/^договор(?:\s*:\s*|\s+)(.+)$/iu))) {
             assign("contractName", match[1].trim());
@@ -63,7 +64,7 @@ function parseInvoiceText(text) {
         }
     }
     const missing = ["clientName", "productName", "price", "vatRate"].filter(field => !seen.has(field));
-    if (missing.length) throw new AppError(`В тексте не найдены: ${missing.map(field => labels[field]).join(", ")}`, 400, { missing, example: EXAMPLE });
+    if (missing.length) throw new AppError(missing.length === 1 && missing[0] === "price" ? "Не указана цена" : `В тексте не найдены: ${missing.map(field => labels[field]).join(", ")}`, 400, { missing, example: EXAMPLE });
     // Положение ООО/ИП в справочнике может отличаться от обычной речи.
     parsed.clientName = parsed.clientName.replace(/[«»"“”]/gu, "").trim()
         .replace(/^(?:ООО|ОАО|ЗАО|ПАО|АО|ИП)\s+/iu, "")
@@ -90,6 +91,7 @@ async function resolveTextRequest(body) {
     if (Object.keys(body).some(key => !allowed.includes(key))) throw new AppError(`Допускаются только поля: ${allowed.join(", ")}`, 400);
     if (body.dryRun !== undefined && typeof body.dryRun !== "boolean") throw new AppError("dryRun должен быть boolean", 400);
     for (const field of ["clientRef", "productRef", "contractRef"]) if (body[field] !== undefined) guid(body[field], field);
+    console.log(`[Текст] Пользователь: ${redact(JSON.stringify(body.text))}`);
     const parsed = parseInvoiceText(body.text);
     const client = selectCandidate(await catalog.findClient(parsed.clientName), body.clientRef, "clientRef", "Клиент");
     let products = await catalog.findProduct(parsed.productName);

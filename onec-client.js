@@ -14,7 +14,7 @@ if (!["http:", "https:"].includes(base.protocol) || base.username || base.passwo
 // Не выводим конфигурацию axios: она содержит пароль и заголовок Authorization.
 function redact(value) {
     let result = String(value);
-    for (const secret of [process.env.ONEC_PASSWORD, process.env.ONEC_USER, process.env.ONEC_URL]) {
+    for (const secret of [process.env.ONEC_PASSWORD, process.env.ONEC_USER, process.env.ONEC_URL, process.env.API_KEY, process.env.PDF_SIGNING_KEY]) {
         if (secret) result = result.split(secret).join("[скрыто]");
     }
     return result;

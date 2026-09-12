@@ -149,6 +149,9 @@ async function createPreparedInvoice(payload) {
         const { data } = await oneC.get(documentPath, { params: { $format: "json" } });
         const result = documentSummary(data?.d || data);
         if (!result.posted) throw new AppError("1С вернула Posted=false после проведения", 502);
+        if (!result.number || result.Ref_Key?.toLowerCase() !== created.Ref_Key.toLowerCase()) {
+            throw new AppError("1С не подтвердила номер или ссылку созданного счёта", 502);
+        }
         console.log(`[Счёт] Проведён документ ${result.number}, сумма=${result.amount}, Ref_Key=${result.Ref_Key}; Posted подтверждён чтением из 1С`);
         return { ...result, status: "posted" };
     } catch (error) {
