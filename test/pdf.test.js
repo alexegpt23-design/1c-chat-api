@@ -47,6 +47,21 @@ async function pdfText(buffer) {
     } finally { await loading.destroy(); }
 }
 
+test("политика конфиденциальности публична, а рабочие API требуют ключ", async () => {
+    calls = [];
+    const privacy = await fetch(baseURL + "/privacy");
+    assert.equal(privacy.status, 200);
+    assert.match(privacy.headers.get("content-type"), /^text\/html/);
+    const html = await privacy.text();
+    assert.match(html, /Политика конфиденциальности/);
+    assert.match(html, /1С Fresh/);
+    assert.match(html, /сценарии ChatGPT.+только после подтверждения пользователем/);
+    assert.equal(html.includes(process.env.API_KEY), false);
+    assert.equal((await fetch(baseURL + "/ping")).status, 401);
+    assert.equal((await fetch(baseURL + "/invoice-confirm", { method: "POST" })).status, 401);
+    assert.equal(calls.length, 0);
+});
+
 test("все маршруты требуют API-ключ до обращения в 1С, включая JSON, PDF и неизвестные пути", async () => {
     calls = [];
     for (const [method, path] of [["GET", "/ping"], ["GET", "/openapi.json"], ["GET", `/invoice/${ref(1)}/pdf`], ["POST", "/invoice-confirm"], ["POST", "/create-invoice"], ["POST", "/invoice-preview-text"], ["GET", "/unknown"]]) {

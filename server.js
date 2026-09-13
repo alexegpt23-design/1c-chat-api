@@ -24,6 +24,52 @@ app.use((req, res, next) => {
     res.setHeader("X-Content-Type-Options", "nosniff");
     next();
 });
+app.get("/privacy", (req, res) => res.type("html").send(`<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Политика конфиденциальности — 1C Chat API</title>
+  <style>
+    :root { color-scheme: light; font-family: system-ui, -apple-system, "Segoe UI", sans-serif; color: #202124; background: #f6f7f8; }
+    body { margin: 0; padding: 24px 16px; line-height: 1.6; }
+    main { box-sizing: border-box; max-width: 760px; margin: 0 auto; padding: 28px; background: #fff; border-radius: 12px; box-shadow: 0 2px 12px rgba(0, 0, 0, .08); }
+    h1 { margin: 0 0 8px; font-size: clamp(1.7rem, 5vw, 2.25rem); line-height: 1.2; }
+    h2 { margin: 28px 0 8px; font-size: 1.2rem; }
+    p, ul { margin: 8px 0; }
+    ul { padding-left: 22px; }
+    .updated { color: #5f6368; }
+    @media (max-width: 520px) { body { padding: 0; } main { min-height: 100vh; padding: 24px 18px; border-radius: 0; box-shadow: none; } }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Политика конфиденциальности</h1>
+    <p class="updated">Сервис 1C Chat API · актуально с 13 сентября 2026 года</p>
+
+    <h2>Назначение сервиса</h2>
+    <p>1C Chat API используется для подготовки и создания счетов на оплату в 1С Fresh по запросу пользователя, а также для формирования PDF счета.</p>
+
+    <h2>Какие данные обрабатываются</h2>
+    <p>При выполнении запросов через API могут обрабатываться:</p>
+    <ul>
+      <li>данные контрагентов и реквизиты организаций;</li>
+      <li>сведения о товарах и услугах;</li>
+      <li>данные договоров;</li>
+      <li>количество, цены, суммы и ставки НДС;</li>
+      <li>номер, дата и другие данные создаваемых счетов.</li>
+    </ul>
+
+    <h2>Как используются данные</h2>
+    <p>Данные используются для выполнения запрошенных пользователем операций: поиска сведений в подключённой базе 1С Fresh, подготовки предварительного просмотра, создания и проведения подтверждённого счета и формирования PDF.</p>
+    <p><strong>В пользовательском сценарии ChatGPT реальный счет создаётся только после подтверждения пользователем показанного предварительного просмотра.</strong></p>
+    <p>До подтверждения данные подготовленного счета временно находятся в памяти сервиса. Для диагностики сервис формирует технические журналы запросов и ошибок, включая текст запроса, найденные объекты и результат операции.</p>
+
+    <h2>Доступ к API</h2>
+    <p>Рабочие API-операции защищены API-ключом. Учётные данные доступа к API и 1С Fresh не публикуются на этой странице.</p>
+  </main>
+</body>
+</html>`));
 app.use(requireApiKey);
 app.use(express.json({ limit: "32kb" }));
 app.get("/openapi.json", (req, res) => res.json(require("./openapi.json")));
