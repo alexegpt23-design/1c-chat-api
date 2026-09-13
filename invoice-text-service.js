@@ -3,6 +3,7 @@ const invoiceService = require("./invoice-service");
 const catalog = require("./catalog-service");
 const { guid } = catalog;
 const { redact } = require("./onec-client");
+const { getProductResolver } = require("./product-resolution-service");
 
 const EXAMPLE = "Выставь счёт ООО Торговые решения. Фискальный накопитель на 15 месяцев. Цена 12200. НДС 22";
 function parseInvoiceText(text) {
@@ -85,7 +86,9 @@ function selectCandidate(candidates, selectedRef, field, label) {
     if (candidates.length !== 1) throw new AppError(`Найдено несколько вариантов: ${label.toLowerCase()}. Укажите ${field}`, 409, { field, candidates });
     return candidates[0];
 }
-async function resolveTextRequest(body) {
+async function resolveTextRequest(body, dependencies = {}) {
+    const catalogService = dependencies.catalog || catalog;
+    const productResolver = dependencies.productResolver || getProductResolver();
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new AppError("Ожидается JSON-объект с text", 400);
     const allowed = ["text", "clientRef", "productRef", "contractRef", "dryRun"];
     if (Object.keys(body).some(key => !allowed.includes(key))) throw new AppError(`Допускаются только поля: ${allowed.join(", ")}`, 400);
@@ -93,14 +96,17 @@ async function resolveTextRequest(body) {
     for (const field of ["clientRef", "productRef", "contractRef"]) if (body[field] !== undefined) guid(body[field], field);
     console.log(`[Текст] Пользователь: ${redact(JSON.stringify(body.text))}`);
     const parsed = parseInvoiceText(body.text);
-    const client = selectCandidate(await catalog.findClient(parsed.clientName), body.clientRef, "clientRef", "Клиент");
-    let products = await catalog.findProduct(parsed.productName);
-    const shortProduct = parsed.productName.match(/^ФН\s+(?:на\s+)?(\d+)\s+месяц(?:ев|а)?$/iu);
-    if (!products.length && shortProduct) {
-        products = await catalog.findProduct(`Фискальный накопитель на ${shortProduct[1]} месяцев`);
+    const client = selectCandidate(await catalogService.findClient(parsed.clientName), body.clientRef, "clientRef", "Клиент");
+    let product;
+    if (body.productRef !== undefined) {
+        // Точный productRef сохраняет прежнюю проверку соответствия текстовому запросу.
+        const products = await catalogService.findProduct(parsed.productName);
+        product = selectCandidate(products, body.productRef, "productRef", "Товар");
+    } else {
+        const resolution = await productResolver.resolveByText(parsed.productName);
+        product = selectCandidate(resolution.candidates, undefined, "productRef", "Товар");
     }
-    const product = selectCandidate(products, body.productRef, "productRef", "Товар");
-    const contracts = (await catalog.findContracts(client.ref, parsed.contractName))
+    const contracts = (await catalogService.findContracts(client.ref, parsed.contractName))
         .filter(item => item.type === "СПокупателем" && !item.closed);
     const contract = selectCandidate(contracts, body.contractRef, "contractRef", "Договор");
     console.log(`[Текст] Запрос разобран: клиент=${client.ref}, товар=${product.ref}, договор=${contract.ref}`);

@@ -2,3 +2,6 @@ node_modules/
 .env
 tmp/
 *.log
+data/product-index.json
+data/product-embeddings.json
+data/product-embeddings.f32
