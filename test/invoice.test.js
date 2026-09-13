@@ -9,6 +9,8 @@ process.env.ONEC_USER = "test-user";
 process.env.ONEC_PASSWORD = "test-password";
 process.env.API_KEY = "test-api-key";
 process.env.PUBLIC_BASE_URL = "https://api.example.test";
+process.env.PRODUCT_SEARCH_MODE = "odata";
+process.env.COUNTERPARTY_SEARCH_MODE = "odata";
 delete process.env.ONEC_VAT_RATE;
 const { oneC } = require("../onec-client");
 const app = require("../server");

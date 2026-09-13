@@ -1,3 +1,4 @@
+process.env.COUNTERPARTY_SEARCH_MODE = "odata";
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
 const { AppError } = require("../errors");

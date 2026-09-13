@@ -4,6 +4,9 @@ const catalog = require("./catalog-service");
 const { guid } = catalog;
 const { redact } = require("./onec-client");
 const { getProductResolver } = require("./product-resolution-service");
+const { createCounterpartyResolver, getCounterpartyResolver } = require("./counterparty-resolution-service");
+
+const CLIENT_SEARCH_NAME = Symbol("clientSearchName");
 
 const EXAMPLE = "Выставь счёт ООО Торговые решения. Фискальный накопитель на 15 месяцев. Цена 12200. НДС 22";
 function parseInvoiceText(text) {
@@ -66,13 +69,17 @@ function parseInvoiceText(text) {
     }
     const missing = ["clientName", "productName", "price", "vatRate"].filter(field => !seen.has(field));
     if (missing.length) throw new AppError(missing.length === 1 && missing[0] === "price" ? "Не указана цена" : `В тексте не найдены: ${missing.map(field => labels[field]).join(", ")}`, 400, { missing, example: EXAMPLE });
-    // Положение ООО/ИП в справочнике может отличаться от обычной речи.
-    parsed.clientName = parsed.clientName.replace(/[«»"“”]/gu, "").trim()
+    const clientSearchName = parsed.clientName.trim();
+    // Сохраняем прежний контракт parser, но передаём resolver исходную юрформу.
+    parsed.clientName = clientSearchName.replace(/[«»"“”]/gu, "").trim()
         .replace(/^(?:ООО|ОАО|ЗАО|ПАО|АО|ИП)\s+/iu, "")
         .replace(/\s+(?:ООО|ОАО|ЗАО|ПАО|АО|ИП)$/iu, "").trim();
+    Object.defineProperty(parsed, CLIENT_SEARCH_NAME, { value: clientSearchName });
     if (!parsed.clientName) throw new AppError("Укажите название клиента после организационной формы", 400);
     const amounts = invoiceService.calculate(parsed);
-    return { ...parsed, quantity: amounts.quantity, price: amounts.price };
+    const result = { ...parsed, quantity: amounts.quantity, price: amounts.price };
+    Object.defineProperty(result, CLIENT_SEARCH_NAME, { value: clientSearchName });
+    return result;
 }
 
 function selectCandidate(candidates, selectedRef, field, label) {
@@ -89,6 +96,8 @@ function selectCandidate(candidates, selectedRef, field, label) {
 async function resolveTextRequest(body, dependencies = {}) {
     const catalogService = dependencies.catalog || catalog;
     const productResolver = dependencies.productResolver || getProductResolver();
+    const counterpartyResolver = dependencies.counterpartyResolver
+        || (dependencies.catalog ? createCounterpartyResolver({ catalog: catalogService }) : getCounterpartyResolver());
     if (!body || typeof body !== "object" || Array.isArray(body)) throw new AppError("Ожидается JSON-объект с text", 400);
     const allowed = ["text", "clientRef", "productRef", "contractRef", "dryRun"];
     if (Object.keys(body).some(key => !allowed.includes(key))) throw new AppError(`Допускаются только поля: ${allowed.join(", ")}`, 400);
@@ -96,7 +105,14 @@ async function resolveTextRequest(body, dependencies = {}) {
     for (const field of ["clientRef", "productRef", "contractRef"]) if (body[field] !== undefined) guid(body[field], field);
     console.log(`[Текст] Пользователь: ${redact(JSON.stringify(body.text))}`);
     const parsed = parseInvoiceText(body.text);
-    const client = selectCandidate(await catalogService.findClient(parsed.clientName), body.clientRef, "clientRef", "Клиент");
+    let client;
+    if (body.clientRef !== undefined) {
+        // Точный clientRef сохраняет прежнюю проверку соответствия тексту.
+        client = selectCandidate(await catalogService.findClient(parsed.clientName), body.clientRef, "clientRef", "Клиент");
+    } else {
+        const resolution = await counterpartyResolver.resolveByText(parsed[CLIENT_SEARCH_NAME] || parsed.clientName, parsed.clientName);
+        client = selectCandidate(resolution.candidates, undefined, "clientRef", "Клиент");
+    }
     let product;
     if (body.productRef !== undefined) {
         // Точный productRef сохраняет прежнюю проверку соответствия текстовому запросу.
