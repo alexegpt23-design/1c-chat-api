@@ -51,11 +51,11 @@ function parseInvoiceText(text) {
                 throw new AppError(`Не удалось определить значение: «${clause}». Укажите цену числом и ставку НДС, например «Цена 12200. НДС 22»`, 400, { example: EXAMPLE });
             }
             if (!seen.has("clientName")) {
-                clause = clause.replace(/^(?:(?:выставь(?:те)?|создай(?:те)?|сформируй(?:те)?)\s+)?сч[её]т\s+(?:для\s+)?/iu, "");
+                clause = clause.replace(/^(?:(?:выстав(?:ь(?:те)?|ить)|созд(?:ай(?:те)?|ать)|сформир(?:уй(?:те)?|овать))\s+)?сч[её]т\s+(?:для\s+)?(?:(?:клиенту|контрагенту)\s+)?/iu, "");
                 // Только первое «на» отделяет клиента; «на 15 месяцев» остаётся частью товара.
                 const inline = clause.match(/^(.+?)\s+на\s+(.+)$/iu);
                 assign("clientName", inline ? inline[1].trim() : clause);
-                if (inline) assign("productName", inline[2].trim());
+                if (inline) assign("productName", inline[2].replace(/^(?:товар|номенклатуру)\s+/iu, "").trim());
             } else if (!seen.has("productName")) {
                 assign("productName", clause);
             } else {

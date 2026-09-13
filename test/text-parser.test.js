@@ -61,3 +61,26 @@ test("противоречивые ставки, отрицательные и �
         assert.throws(() => parseInvoiceText("ООО ГИПЕР, ФН 15 месяцев, " + tail), { status: 400 });
     }
 });
+
+test("вводные конструкции ChatGPT Action не входят в название клиента", () => {
+    const prefixes = [
+        "Выставь счёт", "Выставить счёт", "Выставь счет", "Выставить счет",
+        "Выставь счёт клиенту", "Выставить счёт клиенту",
+        "Создай счёт", "Создать счёт", "Создай счёт клиенту", "Создать счёт клиенту",
+    ];
+    for (const prefix of prefixes) {
+        const parsed = parseInvoiceText(prefix + " «ТОРГОВЫЕ РЕШЕНИЯ ООО» на товар Фискальный накопитель на 15 месяцев, 1 штука, 12400 рублей, НДС 22%.");
+        assert.equal(parsed.clientName, "ТОРГОВЫЕ РЕШЕНИЯ");
+        assert.equal(parsed.productName, "Фискальный накопитель на 15 месяцев");
+        assert.equal(parsed.quantity, 1);
+        assert.equal(parsed.price, 12400);
+        assert.equal(parsed.vatRate, 22);
+    }
+});
+
+test("юрформа клиента нормализуется с обеих сторон", () => {
+    for (const client of ["ООО Торговые решения", "Торговые решения ООО", "ТОРГОВЫЕ РЕШЕНИЯ ООО"]) {
+        const parsed = parseInvoiceText("Выставь счёт " + client + " на товар Фискальный накопитель на 15 месяцев, 1 штука, 12400 рублей, НДС 22%.");
+        assert.equal(parsed.clientName.toUpperCase(), "ТОРГОВЫЕ РЕШЕНИЯ");
+    }
+});
