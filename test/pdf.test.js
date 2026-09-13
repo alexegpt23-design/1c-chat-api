@@ -10,6 +10,7 @@ const app = require("../server");
 const { renderInvoice, pdfUrl } = require("../invoice-pdf-service");
 const { validPdfAccess, signPdfUrl } = require("../pdf-access");
 const ref = n => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
+const bank = { name: 'АО "ТБанк" г. Москва', account: '40702810310000484642', bic: '044525974', correspondent: '30101810145250000974' };
 let server, baseURL, calls, posted = true, incomplete = false, missing = false;
 before(async () => {
     server = app.listen(0, "127.0.0.1");
@@ -23,10 +24,12 @@ before(async () => {
             Организация_Key: ref(2), Контрагент_Key: ref(3), ДоговорКонтрагента_Key: ref(4), ВалютаДокумента_Key: ref(5),
             СуммаВключаетНДС: true, СуммаДокумента: 12200,
             Товары: [{ Содержание: "Фискальный накопитель на 15 месяцев", Количество: 1, Цена: incomplete ? null : 12200, СтавкаНДС: "НДС22", СуммаНДС: 2200, Сумма: 12200 }] };
-        else if (config.url.startsWith("Catalog_Организации")) data = { Ref_Key: ref(2), Description: "ООО ПОСТАВЩИК", ИНН: "1234567890" };
+        else if (config.url.startsWith("Catalog_Организации")) data = { Ref_Key: ref(2), Description: "ООО ПОСТАВЩИК", ИНН: "2309169824", ОсновнойБанковскийСчет_Key: ref(7) };
         else if (config.url.startsWith("Catalog_Контрагенты")) data = { Ref_Key: ref(3), Description: "ООО ГИПЕР" };
         else if (config.url.startsWith("Catalog_Договоры")) data = { Ref_Key: ref(4), Description: "Основной договор" };
         else if (config.url.startsWith("Catalog_Валюты")) data = { Ref_Key: ref(5), Description: "руб." };
+        else if (config.url.endsWith("/Банк")) data = { Ref_Key: ref(8), Description: bank.name, Code: bank.bic, КоррСчет: bank.correspondent };
+        else if (config.url.startsWith("Catalog_БанковскиеСчета")) data = { Ref_Key: ref(7), Owner: ref(2), НомерСчета: bank.account };
         else throw new Error("Unexpected request " + config.url);
         return { data, status: 200, statusText: "OK", headers: {}, config };
     };
@@ -68,7 +71,7 @@ test("PDF по подписанной ссылке читается на тел�
     const buffer = Buffer.from(await response.arrayBuffer());
     assert.equal(buffer.subarray(0, 5).toString(), "%PDF-");
     const { text } = await pdfText(buffer);
-    for (const expected of ["ИНФ-000057", "12.09.2026", "ООО ПОСТАВЩИК", "ООО ГИПЕР", "Основной договор", "Фискальный накопитель на 15 месяцев", "Количество: 1", "12 200,00", "22%", "2 200,00", "Всего к оплате"]) assert.ok(text.includes(expected), expected + ": " + text);
+    for (const expected of ["ИНФ-000057", "12 сентября 2026", "ООО ПОСТАВЩИК", "ООО ГИПЕР", "Основной договор", "Фискальный накопитель на 15 месяцев", "Кол-во", "12 200,00", "22%", "2 200,00", "Всего к оплате", "Двенадцать тысяч двести рублей 00 копеек", bank.account, "Руководитель", "Костюков А. Д."]) assert.ok(text.includes(expected), expected + ": " + text);
     assert.ok(calls.every(call => call.method === "get"));
 });
 
@@ -127,7 +130,7 @@ test("ChatGPT получает защищённую схему с обязате
 
 test("многостраничный PDF не теряет длинные наименования, латиницу и итог", async () => {
     const item = { name: "ФН-1.2 USB " + "длинное наименование ".repeat(10), quantity: 2, price: 100, vat: "БезНДС", vatAmount: 0, total: 200 };
-    const buffer = await renderInvoice({ number: "ТЕСТ-42", date: "2026-09-12", organization: { Description: "Поставщик" }, client: { Description: "Клиент" }, contract: { Description: "Договор" }, currency: { Description: "руб." }, items: Array.from({ length: 35 }, (_, i) => ({ ...item, name: `${item.name} конец${i}` })), total: 7000, priceIncludesVat: true });
+    const buffer = await renderInvoice({ number: "ТЕСТ-42", date: "2026-09-12", organization: { Description: "Поставщик", ИНН: "2309169824" }, client: { Description: "Клиент" }, contract: { Description: "Договор" }, currency: { Description: "руб." }, bank, items: Array.from({ length: 35 }, (_, i) => ({ ...item, name: `${item.name} конец${i}` })), total: 7000, priceIncludesVat: true });
     const { text, pages } = await pdfText(buffer);
     assert.ok(pages.length > 1);
     assert.ok(text.includes("USB"));
